@@ -1,4 +1,4 @@
-package com.example.likebike
+package com.hoslim.likebike
 
 import io.flutter.embedding.android.FlutterActivity
 
