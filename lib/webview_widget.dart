@@ -19,45 +19,59 @@ class _MyWebViewState extends State<MyWebView> {
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0x00000000))
+      ..enableZoom(false)
       ..setNavigationDelegate(
         NavigationDelegate(
-          onProgress: (int progress) {
-            // 페이지 로딩 진행 상황을 확인할 수 있습니다.
-          },
-          onPageStarted: (String url) {
-            // 페이지 로딩 시작 시 호출됩니다.
-          },
+          onProgress: (int progress) {},
+          onPageStarted: (String url) {},
           onPageFinished: (String url) {
-            // 페이지 로딩 완료 시 호출됩니다.
-            // 모바일 최적화를 위한 뷰포트 설정
+            // 메타 태그 추가 및 파일 입력 설정
             _controller.runJavaScript('''
               var meta = document.createElement('meta');
               meta.name = 'viewport';
               meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
               document.getElementsByTagName('head')[0].appendChild(meta);
               
-              // 파일 업로드 지원을 위한 설정
-              document.addEventListener('DOMContentLoaded', function() {
+              // 즉시 실행하여 기존 파일 입력 처리
+              function setupFileInputs() {
                 var fileInputs = document.querySelectorAll('input[type="file"]');
                 fileInputs.forEach(function(input) {
-                  // 모바일에서 카메라 직접 접근을 위한 속성 추가
                   if (input.accept && input.accept.includes('image')) {
                     input.setAttribute('capture', 'environment');
+                    input.setAttribute('multiple', 'false');
+                  }
+                });
+              }
+              
+              // 즉시 실행
+              setupFileInputs();
+              
+              // DOM 변경 감지하여 새로운 파일 입력도 처리
+              var observer = new MutationObserver(function(mutations) {
+                mutations.forEach(function(mutation) {
+                  if (mutation.type === 'childList') {
+                    setupFileInputs();
                   }
                 });
               });
+              
+              observer.observe(document.body, {
+                childList: true,
+                subtree: true
+              });
+              
+              // DOMContentLoaded에서도 한 번 더 실행
+              document.addEventListener('DOMContentLoaded', setupFileInputs);
             ''');
 
             setState(() {
-              _isWebViewReady = true; // 로딩 완료 시 상태 업데이트
+              _isWebViewReady = true;
             });
           },
           onWebResourceError: (WebResourceError error) {
-            // 웹 리소스 로딩 중 에러 발생 시 호출됩니다.
-            print('WebView error: ${error.description}');
+            debugPrint('WebView error: ${error.description}');
           },
           onNavigationRequest: (NavigationRequest request) {
-            // 페이지 이동 요청 시 호출됩니다.
             return NavigationDecision.navigate;
           },
         ),
@@ -69,49 +83,75 @@ class _MyWebViewState extends State<MyWebView> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: false, // 기본 뒤로가기 동작을 비활성화
-      onPopInvoked: (didPop) async {
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
 
-        // WebView에서 뒤로갈 페이지가 있는지 확인
         final canGoBack = await _controller.canGoBack();
 
         if (canGoBack) {
-          // WebView 내에서 뒤로가기 실행
           await _controller.goBack();
         } else {
-          // 뒤로갈 페이지가 없으면 더블 탭으로 앱 종료
           final now = DateTime.now();
           if (_lastBackPressed == null ||
               now.difference(_lastBackPressed!) > const Duration(seconds: 2)) {
             _lastBackPressed = now;
 
-            // 토스트 메시지 대신 스낵바로 안내
             if (context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('뒤로가기 버튼을 한 번 더 누르면 앱이 종료됩니다.'),
+                  content: Text('뒤로가기를 한 번 더 하면 앱이 종료됩니다.'),
                   duration: Duration(seconds: 2),
                 ),
               );
             }
           } else {
-            // 2초 내에 다시 뒤로가기를 누르면 앱 종료
             if (context.mounted) {
               Navigator.of(context).pop();
             }
           }
         }
       },
-      child: Scaffold(
-        backgroundColor: Colors.green,
-        body:
-            _isWebViewReady // 웹뷰가 준비되었을 때만 WebViewWidget 표시
-            ? WebViewWidget(controller: _controller)
-            : const Center(
-                child: CircularProgressIndicator(), // 로딩 중 인디케이터 표시
-              ),
+      child: GestureDetector(
+        onHorizontalDragEnd: (details) {
+          if (details.primaryVelocity! > 300) {
+            _handleBackGesture();
+          }
+        },
+        child: Scaffold(
+          backgroundColor: Colors.green,
+          body: _isWebViewReady
+              ? WebViewWidget(controller: _controller)
+              : const Center(child: CircularProgressIndicator()),
+        ),
       ),
     );
+  }
+
+  Future<void> _handleBackGesture() async {
+    final canGoBack = await _controller.canGoBack();
+
+    if (canGoBack) {
+      await _controller.goBack();
+    } else {
+      final now = DateTime.now();
+      if (_lastBackPressed == null ||
+          now.difference(_lastBackPressed!) > const Duration(seconds: 2)) {
+        _lastBackPressed = now;
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('뒤로가기를 한 번 더 하면 앱이 종료됩니다.'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          Navigator.of(context).pop();
+        }
+      }
+    }
   }
 }
