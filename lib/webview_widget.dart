@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:webview_flutter/webview_flutter.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 class MyWebView extends StatefulWidget {
   const MyWebView({super.key});
@@ -9,76 +9,31 @@ class MyWebView extends StatefulWidget {
 }
 
 class _MyWebViewState extends State<MyWebView> {
-  late final WebViewController _controller;
+  final GlobalKey webViewKey = GlobalKey();
+  InAppWebViewController? webViewController;
+  InAppWebViewSettings settings = InAppWebViewSettings(
+    isInspectable: true,
+    mediaPlaybackRequiresUserGesture: false,
+    allowsInlineMediaPlayback: true,
+    iframeAllow: "camera; microphone",
+    iframeAllowFullscreen: true,
+    useShouldOverrideUrlLoading: true,
+    useOnLoadResource: true,
+    allowFileAccess: true,
+    allowFileAccessFromFileURLs: true,
+    allowUniversalAccessFromFileURLs: true,
+    javaScriptEnabled: true,
+    domStorageEnabled: true,
+    databaseEnabled: true,
+    clearCache: false,
+    cacheEnabled: true,
+    supportZoom: false,
+    userAgent:
+        "Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+  );
+
   bool _isWebViewReady = false;
   DateTime? _lastBackPressed;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(const Color(0x00000000))
-      ..enableZoom(false)
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onProgress: (int progress) {},
-          onPageStarted: (String url) {},
-          onPageFinished: (String url) {
-            // 메타 태그 추가 및 파일 입력 설정
-            _controller.runJavaScript('''
-              var meta = document.createElement('meta');
-              meta.name = 'viewport';
-              meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
-              document.getElementsByTagName('head')[0].appendChild(meta);
-              
-              // 즉시 실행하여 기존 파일 입력 처리
-              function setupFileInputs() {
-                var fileInputs = document.querySelectorAll('input[type="file"]');
-                fileInputs.forEach(function(input) {
-                  if (input.accept && input.accept.includes('image')) {
-                    input.setAttribute('capture', 'environment');
-                    input.setAttribute('multiple', 'false');
-                  }
-                });
-              }
-              
-              // 즉시 실행
-              setupFileInputs();
-              
-              // DOM 변경 감지하여 새로운 파일 입력도 처리
-              var observer = new MutationObserver(function(mutations) {
-                mutations.forEach(function(mutation) {
-                  if (mutation.type === 'childList') {
-                    setupFileInputs();
-                  }
-                });
-              });
-              
-              observer.observe(document.body, {
-                childList: true,
-                subtree: true
-              });
-              
-              // DOMContentLoaded에서도 한 번 더 실행
-              document.addEventListener('DOMContentLoaded', setupFileInputs);
-            ''');
-
-            setState(() {
-              _isWebViewReady = true;
-            });
-          },
-          onWebResourceError: (WebResourceError error) {
-            debugPrint('WebView error: ${error.description}');
-          },
-          onNavigationRequest: (NavigationRequest request) {
-            return NavigationDecision.navigate;
-          },
-        ),
-      );
-
-    _controller.loadRequest(Uri.parse('https://like-bike-front.vercel.app'));
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -87,10 +42,10 @@ class _MyWebViewState extends State<MyWebView> {
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
 
-        final canGoBack = await _controller.canGoBack();
+        final canGoBack = await webViewController?.canGoBack() ?? false;
 
         if (canGoBack) {
-          await _controller.goBack();
+          await webViewController?.goBack();
         } else {
           final now = DateTime.now();
           if (_lastBackPressed == null ||
@@ -121,18 +76,129 @@ class _MyWebViewState extends State<MyWebView> {
         child: Scaffold(
           backgroundColor: Colors.green,
           body: _isWebViewReady
-              ? WebViewWidget(controller: _controller)
+              ? InAppWebView(
+                  key: webViewKey,
+                  initialUrlRequest: URLRequest(
+                    url: WebUri("https://like-bike-front.vercel.app"),
+                  ),
+                  initialSettings: settings,
+                  onWebViewCreated: (controller) {
+                    webViewController = controller;
+                  },
+                  onLoadStart: (controller, url) {
+                    debugPrint("Page started loading: $url");
+                  },
+                  onPermissionRequest: (controller, request) async {
+                    // 카메라, 마이크 등의 권한 요청을 자동으로 허용
+                    return PermissionResponse(
+                      resources: request.resources,
+                      action: PermissionResponseAction.GRANT,
+                    );
+                  },
+                  onLoadStop: (controller, url) async {
+                    debugPrint("Page finished loading: $url");
+
+                    // 파일 입력 설정을 위한 JavaScript 실행
+                    await controller.evaluateJavascript(
+                      source: '''
+                      var meta = document.createElement('meta');
+                      meta.name = 'viewport';
+                      meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
+                      document.getElementsByTagName('head')[0].appendChild(meta);
+                      
+                      function setupFileInputs() {
+                        var fileInputs = document.querySelectorAll('input[type="file"]');
+                        console.log('Found file inputs:', fileInputs.length);
+                        
+                        fileInputs.forEach(function(input, index) {
+                          console.log('Setting up file input', index, input);
+                          
+                          if (input.accept && input.accept.includes('image')) {
+                            input.setAttribute('capture', 'environment');
+                            input.setAttribute('multiple', 'false');
+                            input.setAttribute('accept', 'image/*');
+                            
+                            // 파일 선택 이벤트 리스너 추가
+                            input.addEventListener('click', function(e) {
+                              console.log('File input clicked');
+                            });
+                          }
+                        });
+                      }
+                      
+                      // 즉시 실행
+                      setupFileInputs();
+                      
+                      // DOM 변경 감지
+                      var observer = new MutationObserver(function(mutations) {
+                        var shouldSetup = false;
+                        mutations.forEach(function(mutation) {
+                          if (mutation.type === 'childList') {
+                            mutation.addedNodes.forEach(function(node) {
+                              if (node.nodeType === 1) {
+                                if (node.tagName === 'INPUT' || (node.querySelector && node.querySelector('input[type="file"]'))) {
+                                  shouldSetup = true;
+                                }
+                              }
+                            });
+                          }
+                        });
+                        if (shouldSetup) {
+                          setTimeout(setupFileInputs, 100);
+                        }
+                      });
+                      
+                      observer.observe(document.body, {
+                        childList: true,
+                        subtree: true
+                      });
+                      
+                      // DOMContentLoaded에서도 실행
+                      document.addEventListener('DOMContentLoaded', function() {
+                        setTimeout(setupFileInputs, 500);
+                      });
+                      
+                      // 페이지 로드 완료 후에도 한 번 더
+                      setTimeout(setupFileInputs, 1000);
+                    ''',
+                    );
+                  },
+                  onReceivedError: (controller, request, error) {
+                    debugPrint("WebView error: ${error.description}");
+                  },
+                  onConsoleMessage: (controller, consoleMessage) {
+                    debugPrint("Console: ${consoleMessage.message}");
+                  },
+                  shouldOverrideUrlLoading:
+                      (controller, navigationAction) async {
+                        var uri = navigationAction.request.url!;
+                        debugPrint("Navigation to: $uri");
+
+                        // 모든 URL 허용 (OAuth 포함)
+                        return NavigationActionPolicy.ALLOW;
+                      },
+                )
               : const Center(child: CircularProgressIndicator()),
         ),
       ),
     );
   }
 
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      setState(() {
+        _isWebViewReady = true;
+      });
+    });
+  }
+
   Future<void> _handleBackGesture() async {
-    final canGoBack = await _controller.canGoBack();
+    final canGoBack = await webViewController?.canGoBack() ?? false;
 
     if (canGoBack) {
-      await _controller.goBack();
+      await webViewController?.goBack();
     } else {
       final now = DateTime.now();
       if (_lastBackPressed == null ||
