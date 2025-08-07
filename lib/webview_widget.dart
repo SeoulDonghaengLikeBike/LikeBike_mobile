@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 class MyWebView extends StatefulWidget {
@@ -59,9 +60,7 @@ class _MyWebViewState extends State<MyWebView> {
               );
             }
           } else {
-            if (context.mounted) {
-              Navigator.of(context).pop();
-            }
+            SystemNavigator.pop();
           }
         }
       },
