@@ -70,7 +70,9 @@ class _MyWebViewState extends State<MyWebView> {
             ? InAppWebView(
                 key: webViewKey,
                 initialUrlRequest: URLRequest(
-                  url: WebUri("https://like-bike-front.vercel.app"),
+                  url: WebUri(
+                    "https://port-next-likebike-front-mgl1nxa39d2d2d9a.sel3.cloudtype.app",
+                  ),
                 ),
                 initialSettings: settings,
                 onWebViewCreated: (controller) {
