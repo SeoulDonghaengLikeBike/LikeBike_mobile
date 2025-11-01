@@ -14,7 +14,7 @@
         android:required="false" />
         
     <application
-        android:label="LikeBike"
+        android:label="LIKE BIKE"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true"

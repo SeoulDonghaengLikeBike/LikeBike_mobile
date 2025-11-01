@@ -65,6 +65,7 @@ class _MyWebViewState extends State<MyWebView> {
         }
       },
       child: Scaffold(
+        resizeToAvoidBottomInset: true,
         backgroundColor: Colors.green,
         body: _isWebViewReady
             ? InAppWebView(
@@ -107,7 +108,7 @@ class _MyWebViewState extends State<MyWebView> {
                         console.log('Setting up file input', index, input);
                         
                         if (input.accept && input.accept.includes('image')) {
-                          input.setAttribute('capture', 'environment');
+                          // input.setAttribute('capture', 'environment');
                           input.setAttribute('multiple', 'false');
                           input.setAttribute('accept', 'image/*');
                           
