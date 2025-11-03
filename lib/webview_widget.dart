@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:permission_handler/permission_handler.dart'; // 추가
 
 class MyWebView extends StatefulWidget {
   const MyWebView({super.key});
@@ -33,6 +34,33 @@ class _MyWebViewState extends State<MyWebView> {
 
   bool _isWebViewReady = false;
   DateTime? _lastBackPressed;
+
+  // 권한 요청 함수 추가
+  Future<void> _requestPermissions() async {
+    // Android 13 이상
+    if (await Permission.photos.isGranted) {
+      return;
+    }
+    
+    Map<Permission, PermissionStatus> statuses = await [
+      Permission.photos,
+      Permission.storage,
+      Permission.camera,
+    ].request();
+
+    debugPrint('Permission statuses: $statuses');
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _requestPermissions(); // 권한 요청
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      setState(() {
+        _isWebViewReady = true;
+      });
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -83,7 +111,7 @@ class _MyWebViewState extends State<MyWebView> {
                   debugPrint("Page started loading: $url");
                 },
                 onPermissionRequest: (controller, request) async {
-                  // 카메라, 마이크 등의 권한 요청을 자동으로 허용
+                  // 모든 권한 요청을 허용
                   return PermissionResponse(
                     resources: request.resources,
                     action: PermissionResponseAction.GRANT,
@@ -92,7 +120,7 @@ class _MyWebViewState extends State<MyWebView> {
                 onLoadStop: (controller, url) async {
                   debugPrint("Page finished loading: $url");
 
-                  // 파일 입력 설정을 위한 JavaScript 실행
+                  // JavaScript 코드 간소화
                   await controller.evaluateJavascript(
                     source: '''
                     var meta = document.createElement('meta');
@@ -108,22 +136,15 @@ class _MyWebViewState extends State<MyWebView> {
                         console.log('Setting up file input', index, input);
                         
                         if (input.accept && input.accept.includes('image')) {
-                          // input.setAttribute('capture', 'environment');
-                          input.setAttribute('multiple', 'false');
+                          // multiple 속성 제거하여 모든 이미지 접근 가능하게
+                          input.removeAttribute('capture');
                           input.setAttribute('accept', 'image/*');
-                          
-                          // 파일 선택 이벤트 리스너 추가
-                          input.addEventListener('click', function(e) {
-                            console.log('File input clicked');
-                          });
                         }
                       });
                     }
                     
-                    // 즉시 실행
                     setupFileInputs();
                     
-                    // DOM 변경 감지
                     var observer = new MutationObserver(function(mutations) {
                       var shouldSetup = false;
                       mutations.forEach(function(mutation) {
@@ -146,14 +167,6 @@ class _MyWebViewState extends State<MyWebView> {
                       childList: true,
                       subtree: true
                     });
-                    
-                    // DOMContentLoaded에서도 실행
-                    document.addEventListener('DOMContentLoaded', function() {
-                      setTimeout(setupFileInputs, 500);
-                    });
-                    
-                    // 페이지 로드 완료 후에도 한 번 더
-                    setTimeout(setupFileInputs, 1000);
                   ''',
                   );
                 },
@@ -166,23 +179,11 @@ class _MyWebViewState extends State<MyWebView> {
                 shouldOverrideUrlLoading: (controller, navigationAction) async {
                   var uri = navigationAction.request.url!;
                   debugPrint("Navigation to: $uri");
-
-                  // 모든 URL 허용 (OAuth 포함)
                   return NavigationActionPolicy.ALLOW;
                 },
               )
             : const Center(child: CircularProgressIndicator()),
       ),
     );
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      setState(() {
-        _isWebViewReady = true;
-      });
-    });
   }
 }
